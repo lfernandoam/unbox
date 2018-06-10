@@ -14,8 +14,7 @@ def start_menu():
 
 def help():
 	print "Commands avaliable:\n"
-	op=raw_input("ls\ncd\nmv\nrm\nmkdir\nupload\ndownload\nlogout\n\n")
-	return op
+	print("ls\ncd\nmv\nrm\nmkdir\nupload\ndownload\nlogout\n\n")
 
 def signup(): #def signup(users):
 	mode='1'
@@ -53,13 +52,18 @@ def signin(): #def signin(users):
 # main
 mode=start_menu()
 op='0'
+dire='/home'
 while mode <> 'exit':
 	if mode=="1":
 		signup()
 	elif mode=="2":
-		si=signin()
-		while( si and (op<>'logout') ):
-			op=help()
+		logged=signin()
+		help()
+		while( logged and (op<>'logout') ):
+			
+			op=raw_input(dire+"> ")
+			if op=='help':
+				help()
 	mode=start_menu()
 
 
