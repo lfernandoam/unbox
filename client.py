@@ -79,26 +79,21 @@ while cmd <> 'exit':
 				op=' '
 				continue
 
-
 			if op[0]=='logout':
 				print op[0]
 				tcp.send("logout")
 
-
 			if op[0]=='help':
 				help()
-
 
 			elif op[0]=='cd':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
-
 				if op[1][0] == '/':
 					if '/'+op[1].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
 						continue
-
 				elif op[1]=='..':
 					if path==rpath:
 						print "Can't."
@@ -114,24 +109,20 @@ while cmd <> 'exit':
 				else: #cd2no
 					pass
 
-
 			elif op[0]=='ls':
 				if len(op)<>1:
 					print "Invalid operand."
 					continue
 				ls()
 
-
 			elif op[0]=='mkdir':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
-
 				if op[1][0] == '/':
 					if '/'+op[1].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
 						continue
-
 				tcp.send(op[0]+" "+op[1])
 				msg = tcp.recv(8)
 				if msg=='mkdir_ae':
@@ -139,12 +130,10 @@ while cmd <> 'exit':
 				else:
 					print "Created."
 
-
 			elif op[0]=='mv':
 				if len(op)<>3:
 					print "Invalid operand."
 					continue
-
 				if op[1][0] == '/':
 					if '/'+op[1].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
@@ -153,13 +142,13 @@ while cmd <> 'exit':
 					if '/'+op[2].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
 						continue
-
 				tcp.send(op[0]+" "+op[1]+" "+op[2])
 				msg = tcp.recv(5)
 				if msg=='mv_ok':
 					print "Moved."
 				else:
 					print "Error."
+
 			elif op[0]=='rm':
 				if len(op)<>2:
 					print "Invalid operand."
@@ -181,9 +170,7 @@ while cmd <> 'exit':
 				if not (os.path.isfile(op[1]) or os.path.isdir(op[1])):
 					print "No such file or directory."
 					continue
-
 				tcp.send(op[0]+" "+op[1])
-
 				root_dir = os.path.normpath(op[1]+os.sep+os.pardir)
 				base_dir = os.path.relpath(op[1],root_dir)
 				#base_dir = os.path.basename(op[1]) # another way to find base_dir
@@ -201,11 +188,9 @@ while cmd <> 'exit':
 						print "Upload completed."
 					else: print "Error."
 					os.remove('temp.zip')
-
 				except OSError:
 					print "File or directory not found."
 					continue
-
 
 			elif op[0]=='download':
 				if len(op)<>2:
@@ -232,9 +217,7 @@ while cmd <> 'exit':
 				else:
 					print "File or directory not found."
 
-
 			else: print "Invalid command. See help."
-
 
 	cmd=start_menu()
 

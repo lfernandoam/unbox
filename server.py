@@ -70,13 +70,11 @@ def client2server(rpath,path,receive): # convert directory of client in a server
     else: src = os.path.join(path,receive[1])
     if len(receive)==2:
         receive = (receive[0],src)
-        print "client2server.receive: ",receive
         return receive
     if receive[2][0]=='/': # dst is an absolute path
         dst = rpath+receive[2]
     else: dst = os.path.join(path,receive[2])
     receive = (receive[0],src,dst)
-    print "client2server.receive: ",receive
     return receive
 
 def log(logmsg,client):
@@ -142,7 +140,6 @@ def connected(con, client):
                         log('Folder '+receive[1]+' already exists',client)
                     path=ppath
 
-
                 if receive[0]=="mv":
                     receive = client2server(rpath,path,receive)
                     cmd = receive[0]+" "+receive[1]+" "+receive[2]
@@ -176,7 +173,6 @@ def connected(con, client):
                             print "Error:",err
                             con.send('rm_no')
                             log('Error to remove '+receive[1],client)
-
 
                 if receive[0]=="cd":
                     ppath=path
@@ -254,7 +250,6 @@ def connected(con, client):
                         con.send("down_nf")
                         log('File or directory to download named '+receive[1]+' not found',client)
 
-
                 msg=con.recv(1024)
                 log('Received "'+msg+'" from client',client)
                 receive = decode(msg)
@@ -269,9 +264,7 @@ def connected(con, client):
     thread.exit()
 
 tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
 host_port = (HOST, PORT)
-
 tcp.bind(host_port)
 tcp.listen(1)
 
