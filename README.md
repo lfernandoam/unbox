@@ -1,2 +1,2 @@
 # unbox
-A academic version of Dropbox service
+An academic version of a *Dropbox-like* service
