@@ -1,44 +1,52 @@
 import socket, thread
-import os, sys
+import os
 from subprocess import Popen, PIPE
 import subprocess
 import zipfile,shutil
+import time
+from datetime import datetime
 
-HOST = ''              # Endereco IP do Servidor
-PORT = 5000            # Porta que o Servidor esta
+HOST = ''           # IP address of server
+PORT = 1234         # port
 
-users = {}
-
-#protocolo: cmd, op1, op2
-#cmd eh comando (1 eh cadastro, 2 eh login ...)
-#op1 pode ser: usuario, origem
-#op2 pode ser: senha, destino
+users = {} # dictionary structure for user access information
+cdir = {} # dictionary structure for current directory of logged user
+#protocol: cmd, op1, op2
+#cmd is 'opcode' (1 is register/signup; 2 is login/signin; cd, ls, mv etc)
+#op1 is operand1 (user or source/destination)
+#op2 is operand2: (password or destination)
 
 def decode(msg):
     receive = msg.split()
-    #(cmd,op1,op2) = msg.split()
     if len(receive)==1:
-        print "decode.tamanho 1"
         return receive[0]
     elif len(receive)==2:
         return receive[0],receive[1]
-
-    print "decode.tamanho 3"
     return receive[0],receive[1],receive[2]
 
-def signup(receive): #def signup(users):
-
-    with open("bd.txt","a") as f:
-        f.write(receive[1]+" "+receive[2]+"\n")
-    #print 'sucesso\n'
-    return 1
-
-def signin(con,user): #def signin(users):
+def signup(receive):
     try:
         f = open("bd.txt", 'r')
     except IOError:
-        #print 'O BD nao existe'
-        con.send("db_nf")
+        print "Database file not found. Created."
+        log("Database file not found. Created bd.txt",client)
+    else:
+        for line in f:
+            (op1, op2) = line.split()
+            users[op1] = op2
+        f.close()
+        print "Users: ",users
+        if receive[1] in users:
+            return -1
+    with open("bd.txt","a") as f:
+        f.write(receive[1]+" "+receive[2]+"\n")
+    return 1
+
+def signin(con,user):
+    try:
+        f = open("bd.txt", 'r')
+    except IOError:
+        con.send("db_nf") # Database file not found.
     else:
         for line in f:
             (op1, op2) = line.split()
@@ -46,7 +54,6 @@ def signin(con,user): #def signin(users):
         f.close()
     if user in users:
         con.send("ask_pwd")
-        #key = raw_input('Informe a senha: ')
         key = con.recv(1024)
         if key == users[user]:
             con.send("signin_ok")
@@ -57,172 +64,152 @@ def signin(con,user): #def signin(users):
     con.send("user_nf")
     return -1
 
-def console(cmd):
-    p = Popen(cmd, shell=True, stdout=PIPE)
-    out, err = p.communicate()
-    return (p.returncode, out, err)
+def client2server(rpath,path,receive): # convert directory of client in a server path
+    if receive[1][0]=='/': # src is an absolute path
+        src = rpath+receive[1]
+    else: src = os.path.join(path,receive[1])
+    if len(receive)==2:
+        receive = (receive[0],src)
+        print "client2server.receive: ",receive
+        return receive
+    if receive[2][0]=='/': # dst is an absolute path
+        dst = rpath+receive[2]
+    else: dst = os.path.join(path,receive[2])
+    receive = (receive[0],src,dst)
+    print "client2server.receive: ",receive
+    return receive
 
-def conectado(con, cliente):
-    print 'A connection was successfully established with', cliente
+def log(logmsg,client):
+    with open("log.txt","a") as log:
+        log.write(str(datetime.now())+' ('+str(client[1])+'): '+logmsg+"\n")
 
+def connected(con, client):
+    print 'A connection was successfully established with', client
+    log('Connection established with '+str(client[0]),client)
     while True:
-        print "\n\nInicio"
         msg = con.recv(1024)
+        log('Received "'+msg+'" from client',client)
         if not msg: break
         if msg=="fin": break
-        print cliente, msg
+        print client, msg
         receive = decode(msg)
-        print "receive1: ",receive
-
         if receive[0]=="1":
-            signup(receive)
+            if(signup(receive)==1):
+                print "Registered."
+                log('User "'+receive[1]+'" registered',client)
+                con.send("su_ok")
+            else: # signup(receive)==-1
+                print "User already registered."
+                log('User "'+receive[1]+'" already registered"',client)
+                con.send("su_nk")
         elif receive[0]=="2":
             if(signin(con,receive[1])<>1):
-                print "Usuario nao logou"
+                print "User not logged."
+                log('User "'+receive[1]+'" not logged',client)
                 continue
-
-
-
-# >>> rpath#### isso sera o rpath= os.getcwd
-# '/home/luisfernando/Documents/TD/trab1/servidor'
-# >>> relpath
-# 'luis/aa'
-# >>> os.path.join(rpath,relpath)
-# '/home/luisfernando/Documents/TD/trab1/servidor/luis/aa'
-
-
-# IMPORTANTE: FAZER NUNCA ENTRAR EM NENHUMA PASTA. FAZER RPATH SER
-# ONDE ESTA O SERVER.PY
-# FAZER FUNCIONAR DIRETORIO RELATIVO E ABSOLUTO
-# DICA: FAZER EQUIVALENCIA DE DIRETORIO SEMPRE E USAR SEMPRE O ABSOLUTO
-# O QUE PENSEI: EU SEMPRE SEI O ENDERECO RELATIVO (/luis/aa etc)
-# TAMBEM SEMPRE SEI O RPATH
-# CASO O USUARIO SEMPRE DER O ABSOLUTO (lado cliente), seria so fazer join
-# como tambem eh pra aceitar relativo, verificar se eh relativo
-# se relativo, juntar rpath+root_dir+end_relativo
-# root_dir eh a subtracao (path - relativo) e rpath
-#>>parentpath=os.path.normpath(path+os.sep+os.pardir)
-#>>root_dir=os.path.relpath(parentpath,rpath)
-
-# ex: path eh /servidor/luis/aa e rpath eh /servidor
-# root_dir = /luis
-# root_dir seria o os.path.relpath(path,rpath)
-# se o usuario mandar relativo, e eu tenho path, so fazer o join dos 3
-# se o usuario mandar absotulo
-
+            print "User logged."
+            log('User "'+receive[1]+'" logged',client)
             rpath=os.getcwd() #root path
             path=os.path.join(rpath,receive[1]) #user path
-            relpath=receive[1]
-
-            #print "path: ",path
+            userlogged=receive[1]
+            cdir[client[1]]=path
             if not os.path.exists(path):
                 os.makedirs(path)
-            #os.chdir(upath)
             msg=con.recv(1024)
+            log('Received "'+msg+'" from client',client)
             receive = decode(msg)
-            print "receive2: ",receive
+
             while receive<>'logout':
-                #print 'inicio.path: ',path
                 if receive=="ls":
-                    print "ls.path: ",path
                     files = [f for f in os.listdir(path)]
-                    #print "files: ",files
-                    #print "f: ",f
                     for f in files:
                         print f
                         con.send(f+"   ")
                     con.send('\0') #end of transmission
+                    log('Sent a list of filenames',client)
+
                 if receive[0]=="mkdir":
                     ppath=path
+                    receive = client2server(rpath,path,receive)
                     path=os.path.join(ppath,receive[1])
                     print "mkdir.path: ",path
                     if not os.path.exists(path):
                         os.mkdir(path)
                         con.send("mkdir_ok")
-                    else: con.send("mkdir_ae") #already exists
+                        log('Created folder '+receive[1],client)
+                    else:
+                        con.send("mkdir_ae") #already exists
+                        log('Folder '+receive[1]+' already exists',client)
                     path=ppath
-                if receive[0]=="mv":
-                    print "path: ",path
-                    print "atual: ",os.getcwd()
-                    print "receive[2]: ",receive[2]
-                    print "rpath+receive[2]: ",rpath+receive[2]
-                    cmd = receive[0]+" "+receive[1]+" "+receive[2]
-                    if receive[2][0]=='/':
-                        dire=rpath+receive[2]
-                        cmd = receive[0]+" "+receive[1]+" "+dire
-                    print cmd
-                    os.chdir(path)
 
+
+                if receive[0]=="mv":
+                    receive = client2server(rpath,path,receive)
+                    cmd = receive[0]+" "+receive[1]+" "+receive[2]
                     op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
                     output, err = op.communicate()
                     if not err:
-                        #output=str(op.stdout.read())
                         print "Output:",output
                         con.send('mv_ok')
+                        log('Moved '+receive[1]+' to '+receive[2],client)
                     else:
                         print "Error:",err
                         con.send('mv_no')
-                    os.chdir(os.path.normpath(path+os.sep+os.pardir)) #retrocede uma pasta
-                if receive[0]=="rm":
-                    print "path: ",path
-                    print "atual: ",os.getcwd()
-                    cmd = receive[0]+" -rf "+receive[1]
-                    print cmd
-                    os.chdir(path)
+                        log('Error to move '+receive[1]+' to '+receive[2],client)
 
-                    op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                    output, err = op.communicate()
-                    if not err:
-                        #output=str(op.stdout.read())
-                        print "Output:",output
-                        con.send('rm_ok')
+                if receive[0]=="rm":
+                    receive = client2server(rpath,path,receive)
+                    if receive[1] in cdir.values():
+                        print "Another user in that directory."
+                        con.send('rm_us')
+                        log('Error to remove: another user connection is currently in '+receive[1],client)
                     else:
-                        print "Error:",err
-                        con.send('rm_no')
-                    os.chdir(os.path.normpath(path+os.sep+os.pardir)) #retrocede uma pasta
+                        cmd = receive[0]+" -rf "+receive[1]
+                        op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        output, err = op.communicate()
+                        if not err:
+                            #output=str(op.stdout.read())
+                            print "Output:",output
+                            con.send('rm_ok')
+                            log('Removed '+receive[1],client)
+                        else:
+                            print "Error:",err
+                            con.send('rm_no')
+                            log('Error to remove '+receive[1],client)
+
 
                 if receive[0]=="cd":
                     ppath=path
-                    print "cd.path: ",path
-                    print "atual: ",os.getcwd()
                     if receive[1]=='..': #cd ..
                         path=os.path.normpath(path+os.sep+os.pardir)
-                        print "cd.. .path: ",path
                         if os.path.exists(path):
-                            #os.chdir("..");
-                            print "cd.path2: ",path
+                            cdir[client[1]]=path
                             con.send("cd2ok")
+                            log('Directory changed to '+path,client)
                         else: 
                             con.send("cd2no")
                             path=ppath
-                            print "cd.path2: ",path
+                            log('Error to change directory: '+path+' not exists',client)
                     else:
-
-                        path=os.path.join(ppath,receive[1])
+                        receive = client2server(rpath,path,receive)
+                        path=receive[1]
                         if os.path.isdir(path):
-                            #os.chdir(path)
+                            cdir[client[1]]=receive[1]
                             con.send("cd_ok")
+                            log('Directory changed to '+receive[1],client)
                         else:
                             path=ppath
                             con.send("cd_nf")
+                            log('Error to change directory: '+receive[1]+' not exists',client)
 
                 if receive[0]=="upload":
-
-                    print "atual: ",os.getcwd()
-                    print "receive[1]: ",receive[1]
-
-
-                    # temp = os.path.relpath(receive[1],os.path.normpath(receive[1]+os.sep+os.pardir))
-                    # print "temp: ",temp
-                    # temp+='.zip'
-                    # print temp
-
-                    with open('temp.zip', 'wb') as fw:
-                        msgtam = con.recv(1024) #recebe tam arquivo
-                        fsize = int(msgtam)
-                        print "fsize: ",fsize
+                    with open(os.path.join(path,'temp.zip'), 'wb') as fw:
+                        lenmsg = con.recv(1024) #recebe tam arquivo
+                        fsize = int(lenmsg)
+                        print "File size to receive: ",fsize
                         rsize = 0
                         con.send("ok") #autoriza enviar
+                        log('Authorized to upload file "'+receive[1]+'" with '+lenmsg+' bytes',client)
                         while True:
                             data = con.recv(1024)
                             rsize += len(data)
@@ -231,73 +218,65 @@ def conectado(con, cliente):
                                 break
                     print "Upload Completed"
 
-                    with zipfile.ZipFile('temp.zip',"r") as zip_ref:
-                        zip_ref.extractall()
-
-                    os.remove('temp.zip')
-                    # sData = con.recv(1024)
-                    # print "recebi sData: ",sData
-                    # with open(receive[1],"wb") as fDownloadFile:
-                    #     print "criei arquivo"
-                    #     while sData:
-                    #         fDownloadFile.write(sData)
-                    #         print "vou receber"
-                    #         sData = con.recv(1024)
-                    #         print "recebi"
-                    # print "Download Completed"
+                    with zipfile.ZipFile(os.path.join(path,'temp.zip'),"r") as zip_ref:
+                        zip_ref.extractall(path)
+                    os.remove(os.path.join(path,'temp.zip'))
+                    log('File or directory "'+receive[1]+'" uploaded',client)
 
                 if receive[0]=="download":
-
-                    print "down.atual: ",os.getcwd()
-
-
+                    receive = client2server(rpath,path,receive)
                     root_dir = os.path.normpath(receive[1]+os.sep+os.pardir)
                     base_dir = os.path.relpath(receive[1],root_dir)
-
                     try:
                         shutil.make_archive('temp','zip',root_dir,base_dir)
-
                         fsize = os.path.getsize('temp.zip')
-                        print "fsize: ",str(fsize)
-                        con.send(str(fsize)) # envia tamanho
+                        print "File size to send: ",str(fsize)
+                        con.send(str(fsize)) # send file size
+                        log('Sent filesize ('+str(fsize)+' bytes) to client',client)
                         msg=con.recv(2)
-                        if msg=='ok': # se autorizado a receber, envia
+                        if msg=='ok': # if authorized to send then client send
+                            log("Client authorized download",client)
                             with open('temp.zip','rb') as fs:
                                 data = fs.read(1024)
                                 while data:
                                     con.send(data)
                                     data = fs.read(1024)
                             print "Download completed."
+                            time.sleep(0.1) # sync
                             con.send('down_ok')
-                        else: print "Error."
-
+                            log('File or directory "'+receive[1]+'" downloaded',client)
+                        else:
+                            log("Not received authorization to download",client)
+                            print "Error."
                         os.remove('temp.zip')
-
                     except OSError:
                         print "File or directory not found."
                         con.send("down_nf")
-                        continue
+                        log('File or directory to download named '+receive[1]+' not found',client)
+
 
                 msg=con.recv(1024)
+                log('Received "'+msg+'" from client',client)
                 receive = decode(msg)
-                print "receive3: ",receive
-            print "user logout"
-            os.chdir(rpath)
-            continue
+            print 'User "'+userlogged+'" user has logged out'
+            del cdir[client[1]] # remove user connection from list
+            log('User "'+userlogged+'" user has logged out',client)
+            # continue
 
-    print 'Ending client connection', cliente
+    print 'Ending client connection', client
+    log('Ending client connection with '+str(client[0]),client)
     con.close()
     thread.exit()
 
 tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-orig = (HOST, PORT)
+host_port = (HOST, PORT)
 
-tcp.bind(orig)
+tcp.bind(host_port)
 tcp.listen(1)
 
 while True:
-    con, cliente = tcp.accept()
-    thread.start_new_thread(conectado, tuple([con, cliente]))
+    con, client = tcp.accept()
+    thread.start_new_thread(connected, tuple([con, client]))
 
 tcp.close()
