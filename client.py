@@ -57,7 +57,8 @@ PORT = 1234	# Port
 tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 host_port = (HOST, PORT)
 tcp.connect(host_port)
-
+client = tcp.recv(128)
+print "client:",client
 cmd=start_menu()
 while cmd <> 'exit':
 	op=' '
@@ -170,48 +171,65 @@ while cmd <> 'exit':
 				if not (os.path.isfile(op[1]) or os.path.isdir(op[1])):
 					print "No such file or directory."
 					continue
-				tcp.send(op[0]+" "+op[1])
+
 				root_dir = os.path.normpath(op[1]+os.sep+os.pardir)
-				base_dir = os.path.relpath(op[1],root_dir)
-				#base_dir = os.path.basename(op[1]) # another way to find base_dir
-				try:
-					shutil.make_archive('temp','zip',root_dir,base_dir)
-					fsize = os.path.getsize('temp.zip')
-					tcp.send(str(fsize)) # send file size
-					msg=tcp.recv(2)
-					if msg=='ok': # if authorized to send then send
-						with open('temp.zip','rb') as fs:
-							data = fs.read(1024)
-							while data:
-								tcp.send(data)
-								data = fs.read(1024)
-						print "Upload completed."
-					else: print "Error."
-					os.remove('temp.zip')
-				except OSError:
-					print "File or directory not found."
+				base_dir = os.path.relpath(op[1],root_dir) 
+				# base_dir = os.path.basename(op[1]) # another way to find base_dir (problem if terminated with '/')
+				tcp.send(op[0]+" "+base_dir)
+				
+				print base_dir
+				msg = tcp.recv(5)
+				if msg=='up_us':
+					print "Another user is uploading with this same filename to same directory."
 					continue
+				else:
+					try:
+						shutil.make_archive(base_dir+client,'zip',root_dir,base_dir)
+						fsize = os.path.getsize(base_dir+client+'.zip')
+						tcp.send(str(fsize)) # send file size
+						msg=tcp.recv(2)
+						if msg=='ok': # if authorized to send then send
+							with open(base_dir+client+'.zip','rb') as fs:
+								data = fs.read(1024)
+								while data:
+									tcp.send(data)
+									data = fs.read(1024)
+						else: print "Error."
+						os.remove(base_dir+client+'.zip')
+					except OSError:
+						print "File or directory not found."
+						continue
+					msg = tcp.recv(5)
+					if msg=='up_co':
+						print "Upload completed."
+
 
 			elif op[0]=='download':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
 				tcp.send(op[0]+" "+op[1])
-				with open('temp.zip', 'wb') as fw:
-					msgtam = tcp.recv(1024) # receive file size
-					fsize = int(msgtam)
-					rsize = 0
-					tcp.send("ok") # authorizes to send
-					while True:
-						data = tcp.recv(1024)
-						rsize += len(data)
-						fw.write(data)
-						if  rsize >= fsize:
-							break
-				msg = tcp.recv(7)
-				with zipfile.ZipFile('temp.zip',"r") as zip_ref:
-					zip_ref.extractall()
-				os.remove('temp.zip')
+				base_dir = os.path.basename(op[1])
+				msg=tcp.recv(7)
+				if msg=='down_ex':
+					with open(base_dir+client+'.zip', 'wb') as fw:
+						msgtam = tcp.recv(1024) # receive file size
+						fsize = int(msgtam)
+						rsize = 0
+						tcp.send("ok") # authorizes to send
+						while True:
+							data = tcp.recv(1024)
+							rsize += len(data)
+							fw.write(data)
+							if  rsize >= fsize:
+								break
+					msg = tcp.recv(7)
+					with zipfile.ZipFile(base_dir+client+'.zip',"r") as zip_ref:
+						zip_ref.extractall()
+					os.remove(base_dir+client+'.zip')
+				else:
+					print "File or directory not found."
+					continue
 				if msg=='down_ok':
 					print "Download Completed."
 				else:
