@@ -6,12 +6,6 @@ import zipfile,shutil
 import time
 from datetime import datetime
 
-HOST = ''           # IP address of server
-PORT = 1234         # port
-
-users = {} # dictionary structure for user access information
-cdir = {} # dictionary structure for current directory of logged user
-ulist = {} # dictionary structure for detection of uploading same file to same path at same time
 
 #protocol: cmd, op1, op2
 #cmd is 'opcode' (1 is register/signup; 2 is login/signin; cd, ls, mv etc)
@@ -119,181 +113,237 @@ def connected(con, client):
             msg=con.recv(1024)
             log('Received "'+msg+'" from client',client)
             receive = decode(msg)
+            print "receive:",receive
 
             while receive<>'logout':
-                if receive=="ls":
-                    files = [f for f in os.listdir(path)]
-                    for f in files:
-                        print f
-                        con.send(f+"   ")
-                    con.send('\0') #end of transmission
-                    log('Sent a list of filenames',client)
+                while True: # used just to jump (goto) to its final using 'break'
+                    sh=0
+                    if receive=="ls":
+                        files = [f for f in os.listdir(path)]
+                        for f in files:
+                            print f
+                            con.send(f+"   ")
+                        con.send('\0') #end of transmission
+                        log('Sent a list of filenames',client)
 
-                if receive[0]=="mkdir":
-                    ppath=path
-                    receive = client2server(rpath,path,receive)
-                    path=os.path.join(ppath,receive[1])
-                    print "mkdir.path: ",path
-                    if not os.path.exists(path):
-                        os.mkdir(path)
-                        con.send("mkdir_ok")
-                        log('Created folder '+receive[1],client)
-                    else:
-                        con.send("mkdir_ae") #already exists
-                        log('Folder '+receive[1]+' already exists',client)
-                    path=ppath
-
-                if receive[0]=="mv":
-                    receive = client2server(rpath,path,receive)
-                    if not (os.path.isfile(receive[2]) or os.path.isdir(receive[2])):
-                        print "Error to remove: no such file or directory."
-                        con.send('mv_no')
-                        log('Error to move: '+receive[2]+' no such file or directory ',client)
-                    else:
-                        cmd = receive[0]+" "+receive[1]+" "+receive[2]
-                        op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                        output, err = op.communicate()
-                        if not err:
-                            print "Output:",output
-                            con.send('mv_ok')
-                            log('Moved '+receive[1]+' to '+receive[2],client)
+                    if receive[0]=="mkdir":
+                        ppath=path
+                        receive = client2server(rpath,path,receive)
+                        path=os.path.join(ppath,receive[1])
+                        print "mkdir.path: ",path
+                        if not os.path.exists(path):
+                            os.mkdir(path)
+                            con.send("mkdir_ok")
+                            log('Created folder '+receive[1],client)
                         else:
-                            print "Error:",err
-                            con.send('mv_no')
-                            log('Error to move '+receive[1]+' to '+receive[2],client)
+                            con.send("mkdir_ae") #already exists
+                            log('Folder '+receive[1]+' already exists',client)
+                        path=ppath
 
-                if receive[0]=="rm":
-                    receive = client2server(rpath,path,receive)
-                    if receive[1] in cdir.values():
-                        print "Another user in that directory."
-                        con.send('rm_us')
-                        log('Error to remove: another user connection is currently in '+receive[1],client)
-                    else:
-                        if not (os.path.isfile(receive[1]) or os.path.isdir(receive[1])):
+                    if receive[0]=="mv":
+                        receive = client2server(rpath,path,receive)
+                        if not (os.path.isfile(receive[2]) or os.path.isdir(receive[2])):
                             print "Error to remove: no such file or directory."
-                            con.send('rm_no')
-                            log('Error to remove: '+receive[1]+' no such file or directory ',client)
+                            con.send('mv_no')
+                            log('Error to move: '+receive[2]+' no such file or directory ',client)
                         else:
-                            cmd = receive[0]+" -rf "+receive[1]
+                            cmd = receive[0]+" "+receive[1]+" "+receive[2]
                             op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
                             output, err = op.communicate()
                             if not err:
-                                #output=str(op.stdout.read())
                                 print "Output:",output
-                                con.send('rm_ok')
-                                log('Removed '+receive[1],client)
+                                con.send('mv_ok')
+                                log('Moved '+receive[1]+' to '+receive[2],client)
                             else:
                                 print "Error:",err
-                                con.send('rm_no')
-                                log('Error to remove '+receive[1],client)
+                                con.send('mv_no')
+                                log('Error to move '+receive[1]+' to '+receive[2],client)
 
-                if receive[0]=="cd":
-                    ppath=path
-                    if receive[1]=='..': #cd ..
-                        path=os.path.normpath(path+os.sep+os.pardir)
-                        if os.path.exists(path):
-                            cdir[client[1]]=path
-                            con.send("cd2ok")
-                            log('Directory changed to '+path,client)
-                        else: 
-                            con.send("cd2no")
-                            path=ppath
-                            log('Error to change directory: '+path+' not exists',client)
-                    else:
+                    if receive[0]=="rm":
                         receive = client2server(rpath,path,receive)
-                        path=receive[1]
-                        if os.path.isdir(path):
-                            cdir[client[1]]=receive[1]
-                            con.send("cd_ok")
-                            log('Directory changed to '+receive[1],client)
+                        if receive[1] in cdir.values():
+                            print "Another user in that directory."
+                            con.send('rm_us')
+                            log('Error to remove: another user connection is currently in '+receive[1],client)
                         else:
-                            path=ppath
-                            con.send("cd_nf")
-                            log('Error to change directory: '+receive[1]+' not exists',client)
-
-                if receive[0]=="upload":
-                    filename=os.path.join(path,receive[1])
-                    if filename in ulist.values():
-                        print "Another user is uploading with this same filename to same directory."
-                        con.send('up_us')
-                        log('Error to upload: another user is uploading with this same filename to same directory',client)
-                    else:
-                        ulist[client[1]]=filename
-                        con.send('up_ok')
-                        with open(filename+'.zip', 'wb') as fw:
-                            lenmsg = con.recv(1024) # receive file size
-                            fsize = int(lenmsg)
-                            print "File size to receive: ",fsize
-                            rsize = 0
-                            con.send("ok") # auth send
-                            log('Authorized to upload file "'+filename+'" with '+lenmsg+' bytes',client)
-                            while True:
-                                data = con.recv(1024)
-                                rsize += len(data)
-                                fw.write(data)
-                                if  rsize >= fsize:
-                                    break
-                        with zipfile.ZipFile(filename+'.zip',"r") as zip_ref:
-                            zip_ref.extractall(path)
-                        os.remove(filename+'.zip')
-                        del ulist[client[1]] # remove uploading status from list
-                        print "Upload Completed"
-                        con.send('up_co')
-                        log('File or directory "'+filename+'" uploaded',client)
-
-                if receive[0]=="download":
-                    receive = client2server(rpath,path,receive)
-                    if (os.path.isfile(receive[1]) or os.path.isdir(receive[1])):
-                        root_dir = os.path.normpath(receive[1]+os.sep+os.pardir)
-                        base_dir = os.path.relpath(receive[1],root_dir)
-                        con.send("down_ex") # exists
-                        try:
-                            shutil.make_archive('temp','zip',root_dir,base_dir)
-                            fsize = os.path.getsize('temp.zip')
-                            print "File size to send: ",str(fsize)
-                            con.send(str(fsize)) # send file size
-                            log('Sent filesize ('+str(fsize)+' bytes) to client',client)
-                            msg=con.recv(2)
-                            if msg=='ok': # if authorized to send then client send
-                                log("Client authorized download",client)
-                                with open('temp.zip','rb') as fs:
-                                    data = fs.read(1024)
-                                    while data:
-                                        con.send(data)
-                                        data = fs.read(1024)
-                                print "Download completed."
-                                time.sleep(0.1) # sync
-                                con.send('down_ok')
-                                log('File or directory "'+receive[1]+'" downloaded',client)
+                            if not (os.path.isfile(receive[1]) or os.path.isdir(receive[1])):
+                                print "Error to remove: no such file or directory."
+                                con.send('rm_no')
+                                log('Error to remove: '+receive[1]+' no such file or directory ',client)
                             else:
-                                log("Not received authorization to download",client)
-                                print "Error."
-                            os.remove('temp.zip')
-                        except OSError: # never happens?
-                            print "File or directory not found." 
+                                cmd = receive[0]+" -rf "+receive[1]
+                                op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                                output, err = op.communicate()
+                                if not err:
+                                    #output=str(op.stdout.read())
+                                    print "Output:",output
+                                    con.send('rm_ok')
+                                    log('Removed '+receive[1],client)
+                                else:
+                                    print "Error:",err
+                                    con.send('rm_no')
+                                    log('Error to remove '+receive[1],client)
+
+                    if receive[0]=="cd":
+                        if receive[1].split(':')[0]=='sh':
+                            sh=1
+                            try:
+                                s = open("shared.txt", 'r')
+                            except IOError:
+                                print "Database file not found."
+                                con.send("cd2ns") # Database file not found.
+                                log("Error: database file 'shared.txt' not found. Isn't a shared folder",client)
+                                break
+                            else:
+                                for line in s:
+                                    if not line.rstrip('\n') in shared:
+                                        shared.append(line.rstrip('\n'))
+                                s.close()
+                                print "shared:",shared
+                                log('Database file "shared.txt" loaded',client)
+                        if sh:
+                            receive = (receive[0],receive[1].split(':')[1])
+                            if not client2server(rpath,path,receive)[1] in shared:
+                                print receive[1]+" isn't a shared folder!"
+                                con.send("cd2ns")
+                                log("Error: "+client2server(rpath,path,receive)[1]+" isn't a shared folder",client)
+                                break
+                            print "Shared folder!"
+                            log(client2server(rpath,path,receive)[1]+" is a shared folder",client)
+                        ppath=path
+                        if receive[1]=='..': #cd ..
+                            if not os.path.join(rpath,userlogged) in path: # verify if it is a shared folder instruction
+                                print "Shared folder (another user using)"
+                                sh=1
+                            if ( not (os.path.normpath(path+os.sep+os.pardir) in shared) ) and sh:
+                                print os.path.normpath(path+os.sep+os.pardir)+" isn't a shared folder!"
+                                con.send("cd2ns")
+                                log("Error: "+os.path.normpath(path+os.sep+os.pardir)+" isn't a shared folder",client)
+                                break
+                            path=os.path.normpath(path+os.sep+os.pardir)
+                            if os.path.exists(path):
+                                cdir[client[1]]=path
+                                con.send("cd2ok")
+                                log('Directory changed to '+path,client)
+                            else: 
+                                con.send("cd2no")
+                                path=ppath
+                                log('Error to change directory: '+path+' not exists',client)
+                        else:
+                            receive = client2server(rpath,path,receive)
+                            path=receive[1]
+                            if os.path.isdir(path):
+                                cdir[client[1]]=receive[1]
+                                con.send("cd_ok")
+                                log('Directory changed to '+receive[1],client)
+                            else:
+                                path=ppath
+                                con.send("cd_nf")
+                                log('Error to change directory: '+receive[1]+' not exists',client)
+
+                    if receive[0]=="upload":
+                        filename=os.path.join(path,receive[1])
+                        if filename in ulist.values():
+                            print "Another user is uploading with this same filename to same directory."
+                            con.send('up_us')
+                            log('Error to upload: another user is uploading with this same filename to same directory',client)
+                        else:
+                            ulist[client[1]]=filename
+                            con.send('up_ok')
+                            with open(filename+'.zip', 'wb') as fw:
+                                lenmsg = con.recv(1024) # receive file size
+                                fsize = int(lenmsg)
+                                print "File size to receive: ",fsize
+                                rsize = 0
+                                con.send("ok") # auth send
+                                log('Authorized to upload file "'+filename+'" with '+lenmsg+' bytes',client)
+                                while True:
+                                    data = con.recv(1024)
+                                    rsize += len(data)
+                                    fw.write(data)
+                                    if  rsize >= fsize:
+                                        break
+                            with zipfile.ZipFile(filename+'.zip',"r") as zip_ref:
+                                zip_ref.extractall(path)
+                            os.remove(filename+'.zip')
+                            del ulist[client[1]] # remove uploading status from list
+                            print "Upload Completed"
+                            con.send('up_co')
+                            log('File or directory "'+filename+'" uploaded',client)
+
+                    if receive[0]=="download":
+                        receive = client2server(rpath,path,receive)
+                        if (os.path.isfile(receive[1]) or os.path.isdir(receive[1])):
+                            root_dir = os.path.normpath(receive[1]+os.sep+os.pardir)
+                            base_dir = os.path.relpath(receive[1],root_dir)
+                            con.send("down_ex") # exists
+                            try:
+                                shutil.make_archive('temp','zip',root_dir,base_dir)
+                                fsize = os.path.getsize('temp.zip')
+                                print "File size to send: ",str(fsize)
+                                con.send(str(fsize)) # send file size
+                                log('Sent filesize ('+str(fsize)+' bytes) to client',client)
+                                msg=con.recv(2)
+                                if msg=='ok': # if authorized to send then client send
+                                    log("Client authorized download",client)
+                                    with open('temp.zip','rb') as fs:
+                                        data = fs.read(1024)
+                                        while data:
+                                            con.send(data)
+                                            data = fs.read(1024)
+                                    print "Download completed."
+                                    time.sleep(0.1) # sync
+                                    con.send('down_ok')
+                                    log('File or directory "'+receive[1]+'" downloaded',client)
+                                else:
+                                    log("Not received authorization to download",client)
+                                    print "Error."
+                                os.remove('temp.zip')
+                            except OSError: # never happens?
+                                print "File or directory not found." 
+                                con.send("down_nf")
+                                log('File or directory to download named '+receive[1]+' not found',client)
+                        else:
                             con.send("down_nf")
                             log('File or directory to download named '+receive[1]+' not found',client)
-                    else:
-                        con.send("down_nf")
-                        log('File or directory to download named '+receive[1]+' not found',client)
 
+                    if receive=="share":
+                        with open("shared.txt","a") as s:
+                            # shared.append(path)
+                            s.write(path+"\n")
+                            for root, dirs, files in os.walk(path, topdown=False):
+                                for name in dirs:
+                                    print(os.path.join(root, name))
+                                    # shared.append(os.path.join(root, name))
+                                    s.write(os.path.join(root, name)+"\n")
+                        # print "Shared folders:",shared
+                        log('Updated shared folders list in "shared.txt"',client)
+
+                    break
                 msg=con.recv(1024)
                 log('Received "'+msg+'" from client',client)
                 receive = decode(msg)
+                print "receive:",receive
             print 'User "'+userlogged+'" has logged out'
             del cdir[client[1]] # remove user connection from list
             log('User "'+userlogged+'" has logged out',client)
-            # continue
 
     print 'Ending client connection', client
     log('Ending client connection with '+str(client[0]),client)
     con.close()
     thread.exit()
 
+HOST = ''           # IP address of server
+PORT = 1234         # port
 tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 host_port = (HOST, PORT)
 tcp.bind(host_port)
 tcp.listen(1)
+
+users = {} # dictionary structure for user access information
+cdir = {} # dictionary structure for current directory of logged user
+ulist = {} # dictionary structure for detection of uploading same file to same path at same time
+shared = [] # list structure for shared folders information
 
 while True:
     con, client = tcp.accept()

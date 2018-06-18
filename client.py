@@ -58,7 +58,7 @@ tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 host_port = (HOST, PORT)
 tcp.connect(host_port)
 client = tcp.recv(128)
-print "client:",client
+shared=[] # list structure for shared folders information
 cmd=start_menu()
 while cmd <> 'exit':
 	op=' '
@@ -73,6 +73,7 @@ while cmd <> 'exit':
 			path='/'+logged[1]
 			rpath=path
 		while( logged and (op[0]<>'logout') ):			
+			sh=0
 			ppath=path #previous path
 			op=raw_input(path+"> ")
 			op = op.split()
@@ -91,24 +92,40 @@ while cmd <> 'exit':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
-				if op[1][0] == '/':
+				print "op1:",op
+				if op[1].split(':')[0]=='sh':
+					sh=1
+
+				if op[1][0] == '/' and not sh:
 					if '/'+op[1].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
 						continue
 				elif op[1]=='..':
-					if path==rpath:
+					print "path..:",os.path.normpath(path+os.sep+os.pardir)
+					if path==rpath: 
 						print "Can't."
 						continue
+
 				tcp.send(op[0]+" "+op[1])
 				msg = tcp.recv(5)
 				if msg=='cd_nf':
 					print "Directory not found."
 				elif msg=='cd_ok':
+					if sh:
+						path=op[1]
+						continue
 					path=os.path.join(path,op[1])
 				elif msg=='cd2ok':
 					path=os.path.normpath(path+os.sep+os.pardir) # returns one directory
+				elif msg=='cd2ns':
+					if op[1]=='..':
+						print "path:",path
+						print os.path.normpath(path+os.sep+os.pardir)+" isn't a shared folder!"
+						continue
+					print op[1]+" isn't a shared folder!"
 				else: #cd2no
 					pass
+
 
 			elif op[0]=='ls':
 				if len(op)<>1:
@@ -234,6 +251,11 @@ while cmd <> 'exit':
 					print "Download Completed."
 				else:
 					print "File or directory not found."
+
+			elif op[0]=='share': # share a folder to another users can access
+				shared.append(path)
+				tcp.send("share")
+				print "shared:",shared
 
 			else: print "Invalid command. See help."
 
