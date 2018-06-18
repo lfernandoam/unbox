@@ -1,23 +1,39 @@
 import socket
 import os
 import zipfile,shutil
+import shlex
 
 def start_menu():
 	print "\nWelcome to UnBox!\n"
 	cmd=raw_input("1. Sign up\n2. Sign in\n   exit\n\n> ")
 	return cmd
 
+def split(value):
+	lex = shlex.shlex(value)
+	lex.quotes = "'"
+	lex.whitespace_split = True
+	lex.commenters = ''
+	try: return list(lex)
+	except ValueError: return ' '
+
 def help():
 	print "Commands avaliable:\n"
-	print("ls\ncd <dst>\nmv <src> <dst>\nrm <src>\nmkdir <src>")
-	print("upload <file or folder>\ndownload <file or folder>\nlogout\n")
+	print("ls\ncd <dst>\ncd sh:<dst> (used for shared folders)\nmv <src> <dst>\nrm <src>")
+	print("mkdir <src>\nupload <file or folder>\ndownload <file or folder>")
+	print("logout\nshare (share current folder and its subdirectories and files)\n")
 
 def signup():
 	cmd='1'
 	print "Register:\n"
 	username=raw_input('Insert your username: ')
+	if len(username.split())<>1:
+		print "Invalid username."
+		return 0
 	pwd=raw_input('Insert your password: ')
-	tcp.send (cmd+" "+username+" "+pwd)
+	if len(pwd.split())<>1:
+		print "Invalid password."
+		return 0
+	tcp.send(cmd+"|"+username+"|"+pwd)
 	msg = tcp.recv(5)
 	if msg=="su_ok":
 		print "Successful\n"
@@ -27,7 +43,7 @@ def signin():
 	cmd='2'
 	print "Login:\n"
 	username=raw_input('Insert your username: ')
-	tcp.send(cmd+" "+username)
+	tcp.send(cmd+"|"+username)
 	msg = tcp.recv(1024)
 	if msg=="ask_pwd":
 		msg=raw_input("Insert your password: ")
@@ -76,7 +92,9 @@ while cmd <> 'exit':
 			sh=0
 			ppath=path #previous path
 			op=raw_input(path+"> ")
-			op = op.split()
+			op = split(op)
+			print "op:",op
+			print "len(op):",len(op)
 			if len(op)==0:
 				op=' '
 				continue
@@ -106,7 +124,7 @@ while cmd <> 'exit':
 						print "Can't."
 						continue
 
-				tcp.send(op[0]+" "+op[1])
+				tcp.send(op[0]+"|"+op[1])
 				msg = tcp.recv(5)
 				if msg=='cd_nf':
 					print "Directory not found."
@@ -134,14 +152,14 @@ while cmd <> 'exit':
 				ls()
 
 			elif op[0]=='mkdir':
-				if len(op)<>2:
+				if len(op)<>2 or len(op[1].split())<>1: # not allows create a folder with blank space
 					print "Invalid operand."
 					continue
 				if op[1][0] == '/':
 					if '/'+op[1].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
 						continue
-				tcp.send(op[0]+" "+op[1])
+				tcp.send(op[0]+"|"+op[1])
 				msg = tcp.recv(8)
 				if msg=='mkdir_ae':
 					print "Already exists."
@@ -160,7 +178,7 @@ while cmd <> 'exit':
 					if '/'+op[2].split('/')[1]<>rpath:
 						print "Absolute path must be started from "+rpath
 						continue
-				tcp.send(op[0]+" "+op[1]+" "+op[2])
+				tcp.send(op[0]+"|"+op[1]+"|"+op[2])
 				msg = tcp.recv(5)
 				if msg=='mv_ok':
 					print "Moved."
@@ -171,7 +189,7 @@ while cmd <> 'exit':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
-				tcp.send(op[0]+" "+op[1])
+				tcp.send(op[0]+"|"+op[1])
 				msg = tcp.recv(5)
 				if msg=='rm_ok':
 					print "Removed."
@@ -192,7 +210,7 @@ while cmd <> 'exit':
 				root_dir = os.path.normpath(op[1]+os.sep+os.pardir)
 				base_dir = os.path.relpath(op[1],root_dir) 
 				# base_dir = os.path.basename(op[1]) # another way to find base_dir (problem if terminated with '/')
-				tcp.send(op[0]+" "+base_dir)
+				tcp.send(op[0]+"|"+base_dir)
 				
 				print base_dir
 				msg = tcp.recv(5)
@@ -225,7 +243,7 @@ while cmd <> 'exit':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
-				tcp.send(op[0]+" "+op[1])
+				tcp.send(op[0]+"|"+op[1])
 				base_dir = os.path.basename(op[1])
 				msg=tcp.recv(7)
 				if msg=='down_ex':

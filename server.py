@@ -13,8 +13,10 @@ from datetime import datetime
 #op2 is operand2: (password or destination)
 
 def decode(msg):
-    receive = msg.split()
-    if len(receive)==1:
+    receive = msg.split("|")
+    if len(receive)==0: # KeyboardInterrupt by client
+        return ''
+    elif len(receive)==1:
         return receive[0]
     elif len(receive)==2:
         return receive[0],receive[1]
@@ -28,14 +30,14 @@ def signup(receive):
         log("Database file not found. Created bd.txt",client)
     else:
         for line in f:
-            (op1, op2) = line.split()
-            users[op1] = op2
+            (op1, op2) = line.split("|")
+            users[op1] = op2.rstrip('\n')
         f.close()
         print "Users: ",users
         if receive[1] in users:
             return -1
     with open("bd.txt","a") as f:
-        f.write(receive[1]+" "+receive[2]+"\n")
+        f.write(receive[1]+"|"+receive[2]+"\n")
     return 1
 
 def signin(con,user):
@@ -45,9 +47,10 @@ def signin(con,user):
         con.send("db_nf") # Database file not found.
     else:
         for line in f:
-            (op1, op2) = line.split()
-            users[op1] = op2
+            (op1, op2) = line.split("|")
+            users[op1] = op2.rstrip('\n')
         f.close()
+        print "users:",users
     if user in users:
         con.send("ask_pwd")
         key = con.recv(1024)
@@ -118,6 +121,7 @@ def connected(con, client):
             while receive<>'logout':
                 while True: # used just to jump (goto) to its final using 'break'
                     sh=0
+                    print "receive:",receive
                     if receive=="ls":
                         files = [f for f in os.listdir(path)]
                         for f in files:
@@ -127,18 +131,35 @@ def connected(con, client):
                         log('Sent a list of filenames',client)
 
                     if receive[0]=="mkdir":
-                        ppath=path
+                        # ppath=path
                         receive = client2server(rpath,path,receive)
-                        path=os.path.join(ppath,receive[1])
-                        print "mkdir.path: ",path
-                        if not os.path.exists(path):
-                            os.mkdir(path)
+                        cmd = receive[0]+" "+receive[1]
+                        print "cmd:",cmd
+                        op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                        output, err = op.communicate()
+                        if not err:
+                            #output=str(op.stdout.read())
+                            print "Output:",output
                             con.send("mkdir_ok")
                             log('Created folder '+receive[1],client)
                         else:
+                            print "Error:",err
                             con.send("mkdir_ae") #already exists
                             log('Folder '+receive[1]+' already exists',client)
-                        path=ppath
+                        # path=ppath
+
+                        # ppath=path
+                        # receive = client2server(rpath,path,receive)
+                        # path=os.path.join(ppath,receive[1])
+                        # print "mkdir.path: ",path
+                        # if not os.path.exists(path):
+                        #     os.mkdir(path)
+                        #     con.send("mkdir_ok")
+                        #     log('Created folder '+receive[1],client)
+                        # else:
+                        #     con.send("mkdir_ae") #already exists
+                        #     log('Folder '+receive[1]+' already exists',client)
+                        # path=ppath
 
                     if receive[0]=="mv":
                         receive = client2server(rpath,path,receive)
@@ -166,23 +187,19 @@ def connected(con, client):
                             con.send('rm_us')
                             log('Error to remove: another user connection is currently in '+receive[1],client)
                         else:
-                            if not (os.path.isfile(receive[1]) or os.path.isdir(receive[1])):
-                                print "Error to remove: no such file or directory."
+                            cmd = receive[0]+" -r "+receive[1]
+                            print "cmd:",cmd
+                            op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                            output, err = op.communicate()
+                            if not err:
+                                #output=str(op.stdout.read())
+                                print "Output:",output
+                                con.send('rm_ok')
+                                log('Removed '+receive[1],client)
+                            else:
+                                print "Error:",err
                                 con.send('rm_no')
                                 log('Error to remove: '+receive[1]+' no such file or directory ',client)
-                            else:
-                                cmd = receive[0]+" -rf "+receive[1]
-                                op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                                output, err = op.communicate()
-                                if not err:
-                                    #output=str(op.stdout.read())
-                                    print "Output:",output
-                                    con.send('rm_ok')
-                                    log('Removed '+receive[1],client)
-                                else:
-                                    print "Error:",err
-                                    con.send('rm_no')
-                                    log('Error to remove '+receive[1],client)
 
                     if receive[0]=="cd":
                         if receive[1].split(':')[0]=='sh':
