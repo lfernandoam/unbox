@@ -146,20 +146,6 @@ def connected(con, client):
                             print "Error:",err
                             con.send("mkdir_ae") #already exists
                             log('Folder '+receive[1]+' already exists',client)
-                        # path=ppath
-
-                        # ppath=path
-                        # receive = client2server(rpath,path,receive)
-                        # path=os.path.join(ppath,receive[1])
-                        # print "mkdir.path: ",path
-                        # if not os.path.exists(path):
-                        #     os.mkdir(path)
-                        #     con.send("mkdir_ok")
-                        #     log('Created folder '+receive[1],client)
-                        # else:
-                        #     con.send("mkdir_ae") #already exists
-                        #     log('Folder '+receive[1]+' already exists',client)
-                        # path=ppath
 
                     if receive[0]=="mv":
                         receive = client2server(rpath,path,receive)

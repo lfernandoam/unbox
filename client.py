@@ -47,6 +47,9 @@ def signin():
 	msg = tcp.recv(1024)
 	if msg=="ask_pwd":
 		msg=raw_input("Insert your password: ")
+		while len(msg.split())<>1:
+			print "Invalid password."
+			msg=raw_input("Insert your password: ")
 		tcp.send(msg)
 		msg = tcp.recv(1024)
 		if msg=="signin_ok":
@@ -93,8 +96,6 @@ while cmd <> 'exit':
 			ppath=path #previous path
 			op=raw_input(path+"> ")
 			op = split(op)
-			print "op:",op
-			print "len(op):",len(op)
 			if len(op)==0:
 				op=' '
 				continue
@@ -110,7 +111,6 @@ while cmd <> 'exit':
 				if len(op)<>2:
 					print "Invalid operand."
 					continue
-				print "op1:",op
 				if op[1].split(':')[0]=='sh':
 					sh=1
 
