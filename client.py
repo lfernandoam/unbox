@@ -2,6 +2,7 @@ import socket
 import os
 import zipfile,shutil
 import shlex
+import re
 
 def start_menu():
 	print "\nWelcome to UnBox!\n"
@@ -96,6 +97,7 @@ while cmd <> 'exit':
 			ppath=path #previous path
 			op=raw_input(path+"> ")
 			op = split(op)
+
 			if len(op)==0:
 				op=' '
 				continue
@@ -119,7 +121,6 @@ while cmd <> 'exit':
 						print "Absolute path must be started from "+rpath
 						continue
 				elif op[1]=='..':
-					print "path..:",os.path.normpath(path+os.sep+os.pardir)
 					if path==rpath: 
 						print "Can't."
 						continue
@@ -152,7 +153,7 @@ while cmd <> 'exit':
 				ls()
 
 			elif op[0]=='mkdir':
-				if len(op)<>2 or len(op[1].split())<>1: # not allows create a folder with blank space
+				if len(op)<>2: # not allows create a folder with blank space
 					print "Invalid operand."
 					continue
 				if op[1][0] == '/':
@@ -212,18 +213,19 @@ while cmd <> 'exit':
 				# base_dir = os.path.basename(op[1]) # another way to find base_dir (problem if terminated with '/')
 				tcp.send(op[0]+"|"+base_dir)
 				
-				print base_dir
 				msg = tcp.recv(5)
 				if msg=='up_us':
 					print "Another user is uploading with this same filename to same directory."
 					continue
 				else:
 					try:
+						print "Compressing file"
 						shutil.make_archive(base_dir+client,'zip',root_dir,base_dir)
 						fsize = os.path.getsize(base_dir+client+'.zip')
 						tcp.send(str(fsize)) # send file size
 						msg=tcp.recv(2)
 						if msg=='ok': # if authorized to send then send
+							print "Uploading"
 							with open(base_dir+client+'.zip','rb') as fs:
 								data = fs.read(1024)
 								while data:
@@ -275,6 +277,7 @@ while cmd <> 'exit':
 				tcp.send("share")
 				print "shared:",shared
 
+			elif op[0]=='logout': continue
 			else: print "Invalid command. See help."
 
 	cmd=start_menu()

@@ -24,10 +24,10 @@ def decode(msg):
 
 def signup(receive):
     try:
-        f = open("bd.txt", 'r')
+        f = open("db.txt", 'r')
     except IOError:
         print "Database file not found. Created."
-        log("Database file not found. Created bd.txt",client)
+        log("Database file not found. Created db.txt",client)
     else:
         for line in f:
             (op1, op2) = line.split("|")
@@ -36,13 +36,13 @@ def signup(receive):
         print "Users: ",users
         if receive[1] in users:
             return -1
-    with open("bd.txt","a") as f:
+    with open("db.txt","a") as f:
         f.write(receive[1]+"|"+receive[2]+"\n")
     return 1
 
 def signin(con,user):
     try:
-        f = open("bd.txt", 'r')
+        f = open("db.txt", 'r')
     except IOError:
         con.send("db_nf") # Database file not found.
     else:
@@ -64,16 +64,22 @@ def signin(con,user):
     return -1
 
 def client2server(rpath,path,receive): # convert directory of client in a server path
+    print "c2s.receivea:",receive
     if receive[1][0]=='/': # src is an absolute path
         src = rpath+receive[1]
-    else: src = os.path.join(path,receive[1])
+    else: 
+        src = os.path.join(path,receive[1])
+        print "c2s.receive[1]:",receive[1]
+        print "c2s.src:",src
     if len(receive)==2:
         receive = (receive[0],src)
+        print "c2s.receiveb:",receive
         return receive
     if receive[2][0]=='/': # dst is an absolute path
         dst = rpath+receive[2]
     else: dst = os.path.join(path,receive[2])
     receive = (receive[0],src,dst)
+    print "c2s.receive2:",receive
     return receive
 
 def log(logmsg,client):
@@ -123,7 +129,7 @@ def connected(con, client):
                     sh=0
                     print "receive:",receive
                     if receive=="ls":
-                        files = [f for f in os.listdir(path)]
+                        files = [f for f in os.listdir(path.replace("'",''))]
                         for f in files:
                             print f
                             con.send(f+"   ")
@@ -132,6 +138,7 @@ def connected(con, client):
 
                     if receive[0]=="mkdir":
                         # ppath=path
+                        print "path:",path
                         receive = client2server(rpath,path,receive)
                         cmd = receive[0]+" "+receive[1]
                         print "cmd:",cmd
@@ -149,7 +156,7 @@ def connected(con, client):
 
                     if receive[0]=="mv":
                         receive = client2server(rpath,path,receive)
-                        if not (os.path.isfile(receive[2]) or os.path.isdir(receive[2])):
+                        if not (os.path.isfile(receive[2].replace("'",'')) or os.path.isdir(receive[2].replace("'",''))):
                             print "Error to remove: no such file or directory."
                             con.send('mv_no')
                             log('Error to move: '+receive[2]+' no such file or directory ',client)
@@ -168,26 +175,28 @@ def connected(con, client):
 
                     if receive[0]=="rm":
                         receive = client2server(rpath,path,receive)
-                        if receive[1] in cdir.values():
-                            print "Another user in that directory."
-                            con.send('rm_us')
-                            log('Error to remove: another user connection is currently in '+receive[1],client)
-                        else:
-                            cmd = receive[0]+" -r "+receive[1]
-                            print "cmd:",cmd
-                            op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                            output, err = op.communicate()
-                            if not err:
-                                #output=str(op.stdout.read())
-                                print "Output:",output
-                                con.send('rm_ok')
-                                log('Removed '+receive[1],client)
+                        for s in cdir.values():
+                            if receive[1] in s:
+                                print "Another user in that directory."
+                                con.send('rm_us')
+                                log('Error to remove: another user connection is currently in '+receive[1],client)
                             else:
-                                print "Error:",err
-                                con.send('rm_no')
-                                log('Error to remove: '+receive[1]+' no such file or directory ',client)
+                                cmd = receive[0]+" -r "+receive[1]
+                                print "cmd:",cmd
+                                op = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                                output, err = op.communicate()
+                                if not err:
+                                    #output=str(op.stdout.read())
+                                    print "Output:",output
+                                    con.send('rm_ok')
+                                    log('Removed '+receive[1],client)
+                                else:
+                                    print "Error:",err
+                                    con.send('rm_no')
+                                    log('Error to remove: '+receive[1]+' no such file or directory ',client)
 
                     if receive[0]=="cd":
+                        # receive = [receive[0],receive[1].replace("'", '')] # remove quotes
                         if receive[1].split(':')[0]=='sh':
                             sh=1
                             try:
@@ -235,7 +244,8 @@ def connected(con, client):
                         else:
                             receive = client2server(rpath,path,receive)
                             path=receive[1]
-                            if os.path.isdir(path):
+                            # print "path:", path
+                            if os.path.isdir(path.replace("'",'')):
                                 cdir[client[1]]=receive[1]
                                 con.send("cd_ok")
                                 log('Directory changed to '+receive[1],client)
@@ -276,7 +286,7 @@ def connected(con, client):
 
                     if receive[0]=="download":
                         receive = client2server(rpath,path,receive)
-                        if (os.path.isfile(receive[1]) or os.path.isdir(receive[1])):
+                        if (os.path.isfile(receive[1].replace("'",'')) or os.path.isdir(receive[1].replace("'",''))):
                             root_dir = os.path.normpath(receive[1]+os.sep+os.pardir)
                             base_dir = os.path.relpath(receive[1],root_dir)
                             con.send("down_ex") # exists
@@ -314,7 +324,7 @@ def connected(con, client):
                         with open("shared.txt","a") as s:
                             # shared.append(path)
                             s.write(path+"\n")
-                            for root, dirs, files in os.walk(path, topdown=False):
+                            for root, dirs, files in os.walk(path.replace("'",''), topdown=False):
                                 for name in dirs:
                                     print(os.path.join(root, name))
                                     # shared.append(os.path.join(root, name))
